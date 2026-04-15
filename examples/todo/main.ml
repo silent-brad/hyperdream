@@ -1,7 +1,8 @@
+module Embedded = Template
+
 open Hyperdream
 
 module Tmpl = Hyperdream.Template
-module Embedded = Template
 
 module TCP = Tcpv4v6_socket
 module PAF = Paf_mirage.Make (TCP)

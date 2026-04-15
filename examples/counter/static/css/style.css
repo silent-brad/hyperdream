@@ -1,0 +1,55 @@
+body {
+  font-family: system-ui, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+
+#morph {
+  text-align: center;
+  background: #16213e;
+  padding: 2rem 3rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.count {
+  font-size: 4rem;
+  font-weight: bold;
+  margin: 1rem 0;
+  color: #fff;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+button {
+  font-size: 1.2rem;
+  padding: 0.5rem 1.5rem;
+  border: 1px solid #3a3a5c;
+  border-radius: 4px;
+  background: #0f3460;
+  color: #e0e0e0;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1a4a7a;
+}
+
+kbd {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid #3a3a5c;
+  border-radius: 3px;
+  background: #1a1a2e;
+  font-family: inherit;
+  color: #aaa;
+}

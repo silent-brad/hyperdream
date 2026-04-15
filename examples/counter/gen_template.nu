@@ -24,7 +24,7 @@ def main [static_dir: string, templates_dir: string] {
             # Build the OCaml pair using string concatenation
             let line = '  ("' + $rel + '", {_hd_|' + $content + '|_hd_});'
             print $line
-        }
+        } | ignore
     }
     print "]"
     print ""
@@ -40,6 +40,6 @@ def main [static_dir: string, templates_dir: string] {
             let content = (open --raw $file)
             print $"let ($name) = {xx|($content)|xx}"
             print ""
-        }
+        } | ignore
     }
 }

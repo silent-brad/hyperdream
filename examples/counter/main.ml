@@ -10,6 +10,11 @@ let datastar_js =
     ~content:
       (match Template.read "js/datastar.js" with Some s -> s | None -> "")
 
+let css_path =
+  Hyperdream.Assets.register ~original_path:"css/style.css"
+    ~content:
+      (match Template.read "css/style.css" with Some s -> s | None -> "")
+
 let inc_path =
   Hyperdream.Action.define hub "counter/inc" (fun _req ->
       incr counter;
@@ -26,7 +31,9 @@ let reset_path =
       Lwt.return Hyperdream.Action.no_content)
 
 let _view =
-  Hyperdream.View.define ~datastar_js hub "/" (fun _req ->
+  Hyperdream.View.define
+    ~shim_head:(Printf.sprintf {|<link rel="stylesheet" href="%s">|} css_path)
+    ~datastar_js hub "/" (fun _req ->
       Lwt.return
         (Hyperdream.Template.render_string Template.index_jinja
            ~models:

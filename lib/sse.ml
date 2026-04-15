@@ -29,12 +29,21 @@ let notify_all hub =
 
 let flush_body body =
   let p, r = Lwt.wait () in
-  H1.Body.Writer.flush body (fun () -> Lwt.wakeup_later r ());
+  H1.Body.Writer.flush_with_reason body (function
+    | `Written -> Lwt.wakeup_later r (Ok ())
+    | `Closed -> Lwt.wakeup_later r (Error `Closed));
   p
 
 let write_and_flush body data =
-  H1.Body.Writer.write_string body data;
-  flush_body body
+  if H1.Body.Writer.is_closed body then
+    Lwt.fail Exit
+  else begin
+    H1.Body.Writer.write_string body data;
+    let* result = flush_body body in
+    match result with
+    | Ok () -> Lwt.return_unit
+    | Error `Closed -> Lwt.fail Exit
+  end
 
 let respond_sse reqd ~render hub =
   let headers =
@@ -49,7 +58,20 @@ let respond_sse reqd ~render hub =
   let client =
     { notify = Lwt_condition.create (); alive = true; last_view_hash = "" }
   in
+  (* Kill all existing clients — only one SSE connection at a time.
+     This prevents stale clients from blocking h1's write scheduler. *)
+  let kill_existing () =
+    Lwt_mutex.with_lock hub.mutex (fun () ->
+        List.iter
+          (fun c ->
+            c.alive <- false;
+            Lwt_condition.signal c.notify ())
+          !(hub.clients);
+        hub.clients := [];
+        Lwt.return_unit)
+  in
   Lwt.async (fun () ->
+      let* () = kill_existing () in
       let* () = add_client hub client in
       Lwt.finalize
         (fun () ->
@@ -106,6 +128,19 @@ let respond_sse reqd ~render hub =
               H1.Body.Writer.close body;
               Lwt.return_unit))
         (fun () -> remove_client hub client));
+  Lwt.return Router.Streaming
+
+let respond_empty_sse reqd =
+  let headers =
+    H1.Headers.of_list
+      ([ ("x-accel-buffering", "no"); ("transfer-encoding", "chunked") ]
+      @ Datastar.sse_headers)
+  in
+  let response = H1.Response.create ~headers `OK in
+  let body =
+    H1.Reqd.respond_with_streaming ~flush_headers_immediately:true reqd response
+  in
+  H1.Body.Writer.close body;
   Lwt.return Router.Streaming
 
 let write_action_sse reqd fragments =

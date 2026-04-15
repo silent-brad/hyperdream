@@ -19,7 +19,7 @@ let define hub name (handler : Router.request -> response Lwt.t) =
       match resp with
       | No_content ->
           let* () = Sse.notify_all hub in
-          Lwt.return Router.No_content
+          Sse.respond_empty_sse request.reqd
       | Patch (html, opts) -> Sse.write_action_sse request.reqd [ (html, opts) ]
       | Patch_signals signals -> Sse.patch_signals request.reqd signals);
   path
