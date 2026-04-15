@@ -11,6 +11,11 @@ let datastar_js =
     ~content:
       (match Template.read "js/datastar.js" with Some s -> s | None -> "")
 
+let css_path =
+  Hyperdream.Assets.register ~original_path:"css/style.css"
+    ~content:
+      (match Template.read "css/style.css" with Some s -> s | None -> "")
+
 let send_path =
   Hyperdream.Action.define hub "chat/send" (fun req ->
       let signals = Datastar.read_signals_from_body req.body in
@@ -24,17 +29,14 @@ let send_path =
         | `String s -> s
         | _ -> ""
       in
-      if message <> "" then begin
-        let msgs = !messages @ [ (username, message) ] in
-        let len = List.length msgs in
-        messages :=
-          if len > max_messages then
-            List.filteri (fun i _ -> i >= len - max_messages) msgs
-          else msgs
-      end;
-      Lwt.return
-        (Hyperdream.Action.patch_signals
-           (`Assoc [ ("message", `String "") ])))
+      (if message <> "" then
+         let msgs = !messages @ [ (username, message) ] in
+         let len = List.length msgs in
+         messages :=
+           if len > max_messages then
+             List.filteri (fun i _ -> i >= len - max_messages) msgs
+           else msgs);
+      Lwt.return Hyperdream.Action.no_content)
 
 let render_messages () =
   List.map
@@ -42,15 +44,16 @@ let render_messages () =
       Hyperdream.Html.el "div"
         ~attrs:[ ("class", "message") ]
         [
-          Hyperdream.Html.el "strong"
-            [ Hyperdream.Html.text (user ^ ": ") ];
+          Hyperdream.Html.el "strong" [ Hyperdream.Html.text (user ^ ": ") ];
           Hyperdream.Html.text msg;
         ])
     !messages
   |> Hyperdream.Html.concat
 
 let _view =
-  Hyperdream.View.define ~datastar_js hub "/" (fun _req ->
+  Hyperdream.View.define
+    ~shim_head:(Printf.sprintf {|<link rel="stylesheet" href="%s">|} css_path)
+    ~datastar_js hub "/" (fun _req ->
       let msgs_html = render_messages () in
       Lwt.return
         (Hyperdream.Template.render_mixed Template.index_jinja

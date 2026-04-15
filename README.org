@@ -92,4 +92,4 @@ dune exec examples/counter/main.exe
 
 ** License
 
-ISC
+MIT
