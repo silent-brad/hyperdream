@@ -4,17 +4,55 @@ type t = {
   data : (string, string) Hashtbl.t;
   mutex : Lwt_mutex.t;
   on_change : (unit -> unit Lwt.t) option ref;
+  persist_path : string option;
 }
 
 let key_of_path path = String.concat "/" path
 
-let create () =
-  Lwt.return
+let save_to_disk store =
+  match store.persist_path with
+  | None -> Lwt.return_unit
+  | Some path ->
+      let pairs =
+        Hashtbl.fold (fun k v acc -> (k, `String v) :: acc) store.data []
+      in
+      let json = Yojson.Safe.to_string (`Assoc pairs) in
+      let* oc = Lwt_io.open_file ~mode:Lwt_io.Output path in
+      let* () = Lwt_io.write oc json in
+      Lwt_io.close oc
+
+let load_from_disk store =
+  match store.persist_path with
+  | None -> Lwt.return_unit
+  | Some path -> (
+      Lwt.catch
+        (fun () ->
+          let* ic = Lwt_io.open_file ~mode:Lwt_io.Input path in
+          let* contents = Lwt_io.read ic in
+          let* () = Lwt_io.close ic in
+          (match Yojson.Safe.from_string contents with
+          | `Assoc pairs ->
+              List.iter
+                (fun (k, v) ->
+                  match v with
+                  | `String s -> Hashtbl.replace store.data k s
+                  | _ -> ())
+                pairs
+          | _ -> ());
+          Lwt.return_unit)
+        (fun _exn -> Lwt.return_unit))
+
+let create ?path () =
+  let store =
     {
       data = Hashtbl.create 128;
       mutex = Lwt_mutex.create ();
       on_change = ref None;
+      persist_path = path;
     }
+  in
+  let* () = load_from_disk store in
+  Lwt.return store
 
 let fire store =
   match !(store.on_change) with
@@ -31,6 +69,7 @@ let set store path value =
         Hashtbl.replace store.data (key_of_path path) value;
         Lwt.return_unit)
   in
+  let* () = save_to_disk store in
   fire store
 
 let remove store path =
@@ -39,6 +78,7 @@ let remove store path =
         Hashtbl.remove store.data (key_of_path path);
         Lwt.return_unit)
   in
+  let* () = save_to_disk store in
   fire store
 
 let list store path =

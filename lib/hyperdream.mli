@@ -95,7 +95,7 @@ end
 module Store : sig
   type t
 
-  val create : unit -> t Lwt.t
+  val create : ?path:string -> unit -> t Lwt.t
   val get : t -> string list -> string option Lwt.t
   val set : t -> string list -> string -> unit Lwt.t
   val remove : t -> string list -> unit Lwt.t

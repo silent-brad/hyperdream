@@ -58,20 +58,7 @@ let respond_sse reqd ~render hub =
   let client =
     { notify = Lwt_condition.create (); alive = true; last_view_hash = "" }
   in
-  (* Kill all existing clients — only one SSE connection at a time.
-     This prevents stale clients from blocking h1's write scheduler. *)
-  let kill_existing () =
-    Lwt_mutex.with_lock hub.mutex (fun () ->
-        List.iter
-          (fun c ->
-            c.alive <- false;
-            Lwt_condition.signal c.notify ())
-          !(hub.clients);
-        hub.clients := [];
-        Lwt.return_unit)
-  in
   Lwt.async (fun () ->
-      let* () = kill_existing () in
       let* () = add_client hub client in
       Lwt.finalize
         (fun () ->
