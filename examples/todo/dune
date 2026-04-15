@@ -1,0 +1,10 @@
+(executable
+ (name main)
+ (libraries hyperdream paf.mirage tcpip.tcpv4v6-socket lwt lwt.unix jingoo yojson))
+
+(rule
+ (targets template.ml)
+ (deps (source_tree static) (source_tree templates) gen_template.nu)
+ (action
+  (with-stdout-to %{targets}
+   (bash "nu gen_template.nu static templates"))))

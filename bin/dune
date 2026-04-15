@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (public_name hyperdream-dev)
+ (libraries hyperdream paf.mirage tcpip.tcpv4v6-socket lwt lwt.unix cmdliner))

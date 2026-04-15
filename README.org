@@ -1,0 +1,95 @@
+#+TITLE: Hyperdream
+#+DESCRIPTION: MirageOS/Datastar web framework for server-driven real-time applications in OCaml
+
+* Hyperdream
+
+A web framework for building server-driven, real-time applications as MirageOS unikernels using [[https://data-star.dev][Datastar]] for hypermedia exchange over SSE.
+
+** Philosophy
+
+- *Server-driven*: All rendering happens on the server. No client-side JS framework.
+- *Real-time*: Every view is a live SSE stream. State changes push instantly to all connected clients.
+- *Unikernel-ready*: Same code runs on Unix (dev) and as a MirageOS unikernel (prod). Zero filesystem access at runtime.
+- *Minimal*: Simple map-based router, no middleware chains to debug, no magic.
+
+** Core Concepts
+
+*** Two-Route Page Model
+
+Every page registers two HTTP routes:
+
+- =GET /path= → serves a lightweight HTML shell (the "shim") that boots Datastar and opens the SSE connection
+- =POST /path= → opens a persistent SSE stream that pushes rendered HTML on every state change
+
+#+BEGIN_SRC ocaml
+let _view = View.define ~datastar_js hub "/" (fun _req ->
+  Lwt.return (Template.render_string tpl ~models:[("count", string_of_int !counter)]))
+#+END_SRC
+
+*** Actions
+
+Actions are POST handlers with content-addressed paths (SHA256 of the name). When an action returns =No_content=, the framework automatically broadcasts a refresh to all SSE clients.
+
+#+BEGIN_SRC ocaml
+let inc_path = Action.define hub "counter/inc" (fun _req ->
+  incr counter;
+  Lwt.return Action.no_content)
+#+END_SRC
+
+Use the path directly in Datastar attributes:
+
+#+BEGIN_SRC html
+<button data-on:click="@post('{{ inc_path }}')">+1</button>
+#+END_SRC
+
+*** SSE Broadcast Hub
+
+The hub manages connected clients with =Lwt_condition= fan-out. Hash deduplication skips sending when rendered HTML hasn't changed.
+
+*** Irmin Store
+
+Optional persistent state via Irmin. Connect a store to a hub and state changes automatically trigger SSE broadcasts:
+
+#+BEGIN_SRC ocaml
+let* store = Store.create () in
+Store.connect_hub store hub;
+(* Any Store.set call now triggers Sse.notify_all *)
+#+END_SRC
+
+*** Asset Embedding
+
+Static files are compiled into the binary at build time via Nushell codegen — required for unikernel targets with no filesystem. Assets get content-addressed URLs with immutable cache headers.
+
+** Quick Start
+
+#+BEGIN_SRC shell
+nix develop
+dune exec examples/counter/main.exe
+# Open http://localhost:8080
+#+END_SRC
+
+** Examples
+
+| Example       | Port | Description                              |
+|---------------+------+------------------------------------------|
+| =counter=     | 8080 | Minimal: single counter with SSE push    |
+| =game-of-life=| 8081 | Conway's GoL with continuous game loop    |
+| =todo=        | 8082 | CRUD: Irmin-backed todo list             |
+| =chat=        | 8083 | Multi-user real-time chat room           |
+
+** Dependencies
+
+| Library      | Role                                    |
+|--------------+-----------------------------------------|
+| =h1=         | HTTP/1.1 protocol                       |
+| =paf=        | MirageOS HTTP server (Protocol-Agnostic Fibers) |
+| =datastar=   | Datastar SSE SDK ([[https://github.com/silent-brad/datastar-sdk-ocaml][datastar-sdk-ocaml]]) |
+| =jingoo=     | Jinja2-compatible templating            |
+| =irmin=      | Git-like database for persistent state  |
+| =lwt=        | Cooperative concurrency                 |
+| =digestif=   | SHA256 for content addressing           |
+| =yojson=     | JSON serialization                      |
+
+** License
+
+ISC

@@ -1,0 +1,137 @@
+#+TITLE: Hyperdream API Reference
+#+DESCRIPTION: Complete API documentation for the Hyperdream framework
+
+* API Reference
+
+** Hyperdream.Router
+
+*** Types
+
+#+BEGIN_SRC ocaml
+type meth = [ `GET | `POST | `PUT | `PATCH | `DELETE ]
+
+type request = {
+  meth : H1.Method.t;
+  path : string;
+  query : string option;
+  headers : H1.Headers.t;
+  body : string;
+  reqd : H1.Reqd.t;
+}
+
+type response =
+  | Html of { status : H1.Status.t; headers : (string * string) list; body : string }
+  | Streaming
+  | No_content
+  | Not_found
+
+type handler = request -> response Lwt.t
+#+END_SRC
+
+*** Functions
+
+- =add : (meth * string) -> handler -> unit= — Register a route
+- =find : meth -> string -> handler option= — Look up a handler
+- =dispatch : H1.Reqd.t -> unit Lwt.t= — Dispatch a request through the router
+- =parse_target : string -> string * string option= — Split target into path and query
+- =make_request : H1.Reqd.t -> request Lwt.t= — Parse an H1 request into a framework request
+- =respond_string : H1.Reqd.t -> ?headers:(string * string) list -> status:H1.Status.t -> body:string -> unit -> unit= — Send a string response
+
+** Hyperdream.Sse
+
+*** Types
+
+#+BEGIN_SRC ocaml
+type client   (* opaque *)
+type hub      (* opaque *)
+#+END_SRC
+
+*** Functions
+
+- =create_hub : unit -> hub= — Create a new broadcast hub
+- =notify_all : hub -> unit Lwt.t= — Signal all connected clients to re-render
+- =respond_sse : H1.Reqd.t -> render:(unit -> string Lwt.t) -> hub -> Router.response Lwt.t= — Open an SSE stream for a client, rendering on each notification
+- =write_action_sse : H1.Reqd.t -> (string * Datastar.patch_element_opts) list -> Router.response Lwt.t= — Send a one-shot SSE response with element patches
+- =patch_signals : H1.Reqd.t -> Yojson.Safe.t -> Router.response Lwt.t= — Send a one-shot SSE response with signal patches
+
+** Hyperdream.View
+
+- =define : ?shim_head:string -> datastar_js:string -> Sse.hub -> string -> (Router.request -> string Lwt.t) -> string= — Register a view (GET shim + POST SSE), returns the path
+
+** Hyperdream.Action
+
+*** Types
+
+#+BEGIN_SRC ocaml
+type response =
+  | No_content
+  | Patch of string * Datastar.patch_element_opts
+  | Patch_signals of Yojson.Safe.t
+#+END_SRC
+
+*** Functions
+
+- =no_content : response= — Response that triggers a hub broadcast
+- =patch : ?opts:Datastar.patch_element_opts -> string -> response= — Response that patches HTML elements
+- =patch_signals : Yojson.Safe.t -> response= — Response that patches client signals
+- =hashed_path : string -> string= — Compute the content-addressed path for a name
+- =define : Sse.hub -> string -> (Router.request -> response Lwt.t) -> string= — Register an action handler, returns the hashed path
+
+** Hyperdream.Html
+
+- =doctype : string= — =<!DOCTYPE html>=
+- =el : ?attrs:(string * string) list -> string -> string list -> string= — Build an HTML element
+- =void_el : ?attrs:(string * string) list -> string -> string= — Build a void element (=<br />=, =<img />=, etc.)
+- =text : string -> string= — HTML-escaped text node
+- =raw : string -> string= — Raw (unescaped) HTML string
+- =concat : string list -> string= — Concatenate HTML fragments
+- =shim_page : ?lang:string -> ?head_extra:string -> datastar_js:string -> sse_path:string -> unit -> string= — Generate the shim HTML shell
+
+** Hyperdream.Template
+
+- =render_string : string -> models:(string * string) list -> string= — Render a Jingoo template string with escaped models
+- =render_file : string -> models:(string * string) list -> string= — Render a Jingoo template file
+- =render_with_raw : string -> models:(string * string) list -> string= — Render with unescaped (safe) models
+- =render_mixed : string -> str_models:(string * string) list -> safe_models:(string * string) list -> string= — Render with both escaped and unescaped models
+
+** Hyperdream.Assets
+
+- =register : original_path:string -> content:string -> string= — Register a static asset, returns the content-addressed path
+- =register_raw : path:string -> content_type:string -> content:string -> string= — Register at an explicit path
+- =find : string -> (string * string) option= — Look up an asset (content_type, body)
+- =handler : Router.request -> Router.response Lwt.t= — Request handler for static assets
+- =register_embedded_files : (string * string) list -> string list= — Bulk register from a generated =files= list
+
+** Hyperdream.Store
+
+- =create : unit -> t Lwt.t= — Create an in-memory Irmin store
+- =get : t -> string list -> string option Lwt.t= — Get a value by path
+- =set : t -> string list -> string -> unit Lwt.t= — Set a value (triggers on_change)
+- =remove : t -> string list -> unit Lwt.t= — Remove a value (triggers on_change)
+- =list : t -> string list -> string list Lwt.t= — List keys under a path
+- =on_change : t -> (unit -> unit Lwt.t) -> unit= — Register a change callback
+- =connect_hub : t -> Sse.hub -> unit= — Wire store changes to SSE broadcast
+
+** Hyperdream.Session
+
+- =get_session : H1.Headers.t -> string option= — Get session ID from cookies
+- =create_session : unit -> string= — Create a new session
+- =get_session_value : string -> string -> string option= — Get a session value
+- =set_session_value : string -> string -> string -> unit= — Set a session value
+- =check_csrf : Router.request -> bool= — Verify =Sec-Fetch-Site: same-origin=
+- =wrap_session : handler -> handler= — Session middleware
+
+** Hyperdream.Middleware
+
+- =compose : t list -> handler -> handler= — Compose a middleware stack
+- =security_headers : t= — Adds security response headers
+- =error_handler : t= — Catches exceptions, returns 500
+- =default_stack : t list= — =[error_handler; security_headers; wrap_session]=
+
+** Hyperdream.App
+
+#+BEGIN_SRC ocaml
+module Make (HTTP_server : Paf_mirage.S with type ipaddr = Ipaddr.t) : sig
+  val start : ?port:int -> HTTP_server.t -> unit Lwt.t
+end
+#+END_SRC

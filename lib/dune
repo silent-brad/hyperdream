@@ -1,0 +1,16 @@
+(library
+ (name hyperdream)
+ (public_name hyperdream)
+ (libraries
+  lwt
+  lwt.unix
+  h1
+  paf
+  paf.mirage
+  datastar
+  jingoo
+  yojson
+  digestif
+  uri
+  base64
+  mirage-crypto-rng))

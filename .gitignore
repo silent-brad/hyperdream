@@ -1,0 +1,20 @@
+_build
+
+# Merlin configuring file for Vim and Emacs
+.merlin
+
+# Local OPAM switch
+_opam
+
+# Dune generated files
+*.install
+
+# Local OPAM switch
+_opam
+
+# Opam-Lock
+*.opam.locked
+
+tmp
+
+result

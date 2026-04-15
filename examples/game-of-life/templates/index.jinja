@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Game of Life</title>
+  <script defer type="module" src="{{ datastar_js }}"></script>
+  <link rel="stylesheet" href="{{ css_path }}">
+</head>
+<body>
+  <main id="morph">
+    {{ board_html | safe }}
+    <div class="controls">
+      <button data-on:click="@post('{{ refresh_path }}')">Refresh</button>
+    </div>
+  </main>
+</body>
+</html>

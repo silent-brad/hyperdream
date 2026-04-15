@@ -1,0 +1,100 @@
+#+TITLE: Hyperdream Architecture
+#+DESCRIPTION: Technical architecture of the Hyperdream framework
+
+* Architecture Overview
+
+Hyperdream is structured as a layered OCaml library with a MirageOS functor at its core.
+
+** Module Dependency Graph
+
+#+BEGIN_EXAMPLE
+                    ┌──────────┐
+                    │   App    │  MirageOS functor
+                    └────┬─────┘
+                         │
+              ┌──────────┼──────────┐
+              │          │          │
+         ┌────┴───┐ ┌───┴────┐ ┌──┴─────┐
+         │  View  │ │ Action │ │ Assets │
+         └────┬───┘ └───┬────┘ └──┬─────┘
+              │         │         │
+         ┌────┴─────────┴────┐    │
+         │       Router      │    │
+         └────────┬──────────┘    │
+                  │               │
+    ┌─────────────┼───────────────┤
+    │             │               │
+┌───┴──┐  ┌──────┴─────┐  ┌─────┴─────┐
+│  SSE │  │ Middleware  │  │ Template  │
+└───┬──┘  └──────┬─────┘  └───────────┘
+    │            │
+    │     ┌──────┴─────┐
+    │     │  Session   │
+    │     └────────────┘
+    │
+┌───┴────┐
+│ Store  │  Irmin integration
+└────────┘
+#+END_EXAMPLE
+
+** Data Flow
+
+*** Initial Page Load
+
+1. Browser requests =GET /path=
+2. Router dispatches to View's shim handler
+3. Returns pre-built HTML shell with Datastar JS
+4. Datastar boots, opens =POST /path= SSE connection
+
+*** SSE Render Loop
+
+1. Client connects to =POST /path=
+2. SSE engine creates a client with =Lwt_condition=
+3. Immediately renders and sends first frame
+4. Parks on =Lwt_condition.wait=
+5. On notification: re-renders, hashes, sends if changed
+
+*** Action Dispatch
+
+1. User interacts (click, input) → Datastar sends =POST /<hash>=
+2. Router finds the action handler
+3. Handler mutates state (ref, Irmin, etc.)
+4. Returns =No_content= → framework calls =Sse.notify_all=
+5. All SSE clients re-render and push updates
+
+** SSE Engine Internals
+
+The SSE engine (=sse.ml=) manages concurrent client connections:
+
+- *Client Registry*: =client list ref= protected by =Lwt_mutex=
+- *Notification*: =Lwt_condition.signal= per client, broadcast via =notify_all=
+- *Hash Dedup*: SHA256 of rendered HTML; skip send if unchanged
+- *Cleanup*: Write failures set =alive := false=; =Lwt.finalize= removes client
+
+** MirageOS Functor Pattern
+
+#+BEGIN_SRC ocaml
+module Make (HTTP_server : Paf_mirage.S with type ipaddr = Ipaddr.t) = struct
+  val start : ?port:int -> HTTP_server.t -> unit Lwt.t
+end
+#+END_SRC
+
+The concrete TCP implementation is injected at the top level. For Unix development:
+
+#+BEGIN_SRC ocaml
+module TCP = Tcpv4v6_socket
+module PAF = Paf_mirage.Make (TCP)
+module Server = Hyperdream.App.Make (PAF)
+#+END_SRC
+
+For unikernel deployment, =mirage configure= generates the appropriate stack.
+
+** Asset Embedding
+
+Static files are embedded at build time via =gen_assets.nu= (Nushell):
+
+1. =dune= rule invokes =nu gen_assets.nu static/ templates/=
+2. Script reads all files, hex-encodes binary content
+3. Generates =template.ml= with =let files = [...]= and =let read path = ...=
+4. Compiled into the binary — zero filesystem I/O at runtime
+5. Assets served with content-addressed URLs (SHA256 hash) and immutable cache headers

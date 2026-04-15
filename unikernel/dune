@@ -1,0 +1,4 @@
+(executable
+ (name unikernel)
+ (public_name hyperdream-unikernel)
+ (libraries hyperdream paf.mirage tcpip.tcpv4v6-socket lwt lwt.unix))

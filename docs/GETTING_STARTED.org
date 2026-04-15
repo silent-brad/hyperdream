@@ -1,0 +1,142 @@
+#+TITLE: Getting Started with Hyperdream
+#+DESCRIPTION: Step-by-step guide to building your first Hyperdream application
+
+* Getting Started
+
+** Prerequisites
+
+- [[https://nixos.org/][Nix]] with flakes enabled
+- Or: OCaml 5.x, opam, Nushell
+
+** Setup
+
+#+BEGIN_SRC shell
+git clone https://github.com/silent-brad/hyperdream
+cd hyperdream
+nix develop
+#+END_SRC
+
+** Run an Example
+
+#+BEGIN_SRC shell
+dune exec examples/counter/main.exe
+#+END_SRC
+
+Open http://localhost:8080 in your browser.
+
+** Build Your Own App
+
+*** 1. Create the project structure
+
+#+BEGIN_EXAMPLE
+myapp/
+├── dune
+├── main.ml
+├── gen_template.nu    # copy from lib/gen_assets.nu
+├── templates/
+│   └── index.jinja
+└── static/
+    └── js/
+        └── datastar.js  # download from https://data-star.dev
+#+END_EXAMPLE
+
+*** 2. Write the dune file
+
+#+BEGIN_SRC scheme
+(executable
+ (name main)
+ (libraries hyperdream paf.mirage tcpip.tcpv4v6-socket lwt lwt.unix jingoo))
+
+(rule
+ (targets template.ml)
+ (deps (source_tree static) (source_tree templates) gen_template.nu)
+ (action
+  (with-stdout-to %{targets}
+   (bash "nu gen_template.nu static templates"))))
+#+END_SRC
+
+*** 3. Write the template
+
+#+BEGIN_SRC html
+<main id="morph">
+  <h1>{{ greeting }}</h1>
+  <button data-on:click="@post('{{ action_path }}')">Click me</button>
+</main>
+#+END_SRC
+
+*** 4. Write the application
+
+#+BEGIN_SRC ocaml
+open Hyperdream
+
+module TCP = Tcpv4v6_socket
+module PAF = Paf_mirage.Make (TCP)
+module Server = App.Make (PAF)
+
+let hub = Sse.create_hub ()
+let clicks = ref 0
+
+let datastar_js = Assets.register
+  ~original_path:"js/datastar.js"
+  ~content:(match Template_.read "js/datastar.js" with
+            | Some s -> s | None -> "")
+
+let click_path = Action.define hub "myapp/click" (fun _req ->
+  incr clicks;
+  Lwt.return Action.no_content)
+
+let _view = View.define ~datastar_js hub "/" (fun _req ->
+  let greeting = Printf.sprintf "Clicked %d times" !clicks in
+  Lwt.return (Template.render_string Template_.index_jinja
+    ~models:[("greeting", greeting); ("action_path", click_path)]))
+
+let () =
+  Lwt_main.run begin
+    let open Lwt.Syntax in
+    let ipv4_prefix = Ipaddr.V4.Prefix.of_string_exn "0.0.0.0/0" in
+    let* tcp = TCP.connect ~ipv4_only:false ~ipv6_only:false ipv4_prefix None in
+    let* http_server = PAF.init ~port:8080 tcp in
+    Server.start ~port:8080 http_server
+  end
+#+END_SRC
+
+*** 5. Run
+
+#+BEGIN_SRC shell
+dune exec ./main.exe
+#+END_SRC
+
+** Key Concepts
+
+*** Hub
+
+The =Sse.hub= is the central broadcast mechanism. Create one per application. All views and actions share it.
+
+*** Views
+
+=View.define= registers two routes:
+- =GET= serves the HTML shim (lightweight shell that boots Datastar)
+- =POST= opens an SSE stream that re-renders on every hub notification
+
+*** Actions
+
+=Action.define= registers a =POST= handler at a hashed path. When it returns =No_content=, the hub broadcasts and all views re-render.
+
+*** Store (Optional)
+
+Use =Store= for Irmin-backed persistent state. Call =Store.connect_hub= to automatically broadcast on state changes.
+
+*** Signals
+
+Datastar signals (client-side reactive state) can be read in actions:
+
+#+BEGIN_SRC ocaml
+let signals = Datastar.read_signals_from_body req.body in
+let value = Yojson.Safe.Util.member "field_name" signals
+#+END_SRC
+
+And pushed back:
+
+#+BEGIN_SRC ocaml
+Lwt.return (Action.patch_signals (`Assoc [("field_name", `String "")]))
+#+END_SRC
